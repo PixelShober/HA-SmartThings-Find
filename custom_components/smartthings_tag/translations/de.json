@@ -1,0 +1,40 @@
+{
+  "config": {
+    "abort": {
+      "reauth_successful": "Erfolgreich authentifiziert."
+    },
+    "step": {
+      "user": {
+        "title": "SmartThings Tag Login",
+        "description": "Login wird vorbereitet..."
+      },
+      "auth_code": {
+        "title": "SmartThings Tag Login",
+        "description": "Bitte klicke [hier]({login_url}) um dich anzumelden.\n\nNach der Anmeldung kopiere bitte die volle ms-app:// URL (auch wenn die Seite einen Fehler anzeigt) und f\u00fcge sie unten ein. Nicht die sichtbare Fehlerseiten-URL einf\u00fcgen. Wenn der Browser fragt, eine externe App f\u00fcr den ms-app Link zu \u00f6ffnen, bitte abbrechen.\n\nSo findest du die ms-app URL:\n1) Browser-Tab nach dem Login offen lassen.\n2) Developer Tools (F12) \u00f6ffnen und Network oder Console ansehen.\n3) Eine URL die mit ms-app:// beginnt komplett kopieren.",
+        "data": {
+          "redirect_url": "Weiterleitungs-URL"
+        }
+      }
+    },
+    "error": {
+      "login_error": "Initialisierung fehlgeschlagen: {error_msg}",
+      "auth_failed": "Authentifizierung fehlgeschlagen. Bitte \u00fcberpr\u00fcfen Sie die URL und versuchen Sie es erneut."
+    },
+    "progress": {
+      "task_stage_one": "Vorbereitung l\u00e4uft, bitte warten...",
+      "task_stage_two": "Zum Anmelden bitte [hier]({url}) klicken, um die Anmeldeseite im Browser zu \u00f6ffnen. \n\nLink funktioniert nicht? Gehe auf [signin.samsung.com/key](https://signin.samsung.com/key/) und gib den folgenden Code ein:\n\n## ```{code}```\n"
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "description": "Optionen f\u00fcr Polling und Active Mode konfigurieren.",
+        "data": {
+          "update_interval": "Aktualisierungsintervall (in Sekunden)",
+          "active_mode_smarttags": "Aktiven Modus f\u00fcr SmartTags verwenden. K\u00f6nnte Batterienutzung erh\u00f6hen",
+          "active_mode_others": "Aktiven Modus f\u00fcr andere Ger\u00e4te (Handys, Uhren, ...) verwenden. Deutlich erh\u00f6hter Akkuverbrauch!"
+        }
+      }
+    }
+  }
+}

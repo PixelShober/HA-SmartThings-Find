@@ -1,0 +1,21 @@
+{
+  "domain": "smartthings_tag",
+  "name": "SmartThings Tag",
+  "after_dependencies": [
+    "http"
+  ],
+  "version": "0.3",
+  "documentation": "https://github.com/gunhol/SmartThings-Tag",
+  "issue_tracker": "https://github.com/gunhol/SmartThings-Tag/issues",
+  "integration_type": "hub",
+  "dependencies": [],
+  "codeowners": [
+    "@gunhol"
+  ],
+  "requirements": [
+    "requests",
+    "cryptography"
+  ],
+  "iot_class": "cloud_polling",
+  "config_flow": true
+}

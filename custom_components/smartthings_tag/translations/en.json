@@ -1,0 +1,40 @@
+{
+  "config": {
+    "abort": {
+      "reauth_successful": "Reauthentication successful."
+    },
+    "step": {
+      "user": {
+        "title": "SmartThings Tag Login",
+        "description": "Initializing login..."
+      },
+      "auth_code": {
+        "title": "SmartThings Tag Login",
+        "description": "Please click [here]({login_url}) to log in. \n\nAfter logging in, copy the full ms-app:// URL you are redirected to (even if it shows an error) and paste it below. Do not paste the visible error page URL. If the browser asks to open an external app for the ms-app link, cancel it.\n\nHow to get the ms-app URL:\n1) Keep the browser tab open after login.\n2) Open Developer Tools (F12) and go to Network or Console.\n3) Look for a URL that starts with ms-app:// and copy the full URL.",
+        "data": {
+          "redirect_url": "Redirect URL"
+        }
+      }
+    },
+    "error": {
+      "login_error": "Initialization failed: {error_msg}",
+      "auth_failed": "Authentication failed. Please check the URL and try again."
+    },
+    "progress": {
+      "task_stage_one": "Preparing, please wait...",
+      "task_stage_two": "To login please click [here]({url}) to open the login page in your browser. \n\nUnable to access the link? Go to [signin.samsung.com/key](https://signin.samsung.com/key/) and enter the following code:\n\n## ```{code}```\n"
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "description": "Configure polling and active mode options.",
+        "data": {
+          "update_interval": "Update interval (seconds)",
+          "active_mode_smarttags": "Use active mode for SmartTags. Might increase battery consumption.",
+          "active_mode_others": "Use active mode for other devices (phones, watches, ...). Will heavily increase battery consumption."
+        }
+      }
+    }
+  }
+}
