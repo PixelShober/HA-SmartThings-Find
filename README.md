@@ -68,23 +68,6 @@ By default active mode is enabled for SmartTags but disabled for any other devic
    - **Paste**: Paste the copied URL back into the Home Assistant dialog.
 4. The integration will verify the token and load your devices.
 
-## Local Debug UI (optional)
-
-Use `local_ui.py` for local testing. It supports API devices plus an optional web session (phones/buds) by either pasting Cookie/_csrf or using Playwright to open a visible browser for manual login. Captcha cannot be bypassed; complete it yourself. If you want Playwright capture, install `playwright` and run `playwright install`.
-
-CDP capture settings are stored in `debug_config.json`:
-- `playwright_cdp_url`: CDP endpoint (default `http://localhost:9222`).
-- `playwright_timeout_seconds`: how long to wait for the capture.
-
-Optional web keep-alive settings (local UI only):
-- `web_keep_alive_enabled`: set `true` to reload the SmartThings Find web UI periodically.
-- `web_keep_alive_minutes`: interval in minutes (minimum 5).
-
-Launch Chrome with remote debugging, log in to SmartThings Find, then use "Capture Web Session (CDP)" in the local UI:
-```
-"C:\Program Files\Google\Chrome\Application\chrome.exe" --remote-debugging-port=9222 --user-data-dir="D:\Downloads\SmartThings Find\pw_user_data" --profile-directory=Default
-```
-
 ## Debugging
 
 To enable debugging, you need to set the log level in `configuration.yaml`:
