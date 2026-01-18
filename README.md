@@ -1,8 +1,8 @@
-# SmartThings Tag Integration for Home Assistant (OAuth Fork)
+# SmartThings Find Integration for Home Assistant (OAuth Fork)
 
 This is a fork of the original repository by [tomskra](https://github.com/tomskra/HA-SmartThings-Find) (and [Vedeneb](https://github.com/Vedeneb/HA-SmartThings-Find)). This version replaces the unstable JSESSIONID authentication with a robust OAuth 2.0 flow using PKCE, ensuring persistent connections and automatic token refreshing.
 
-# SmartThings Tag Integration for Home Assistant
+# SmartThings Find Integration for Home Assistant
 
 This integration adds support for devices from Samsung SmartThings Find. While intended mainly for Samsung SmartTags, it also works with other devices, such as phones, tablets, watches and earbuds.
 
@@ -39,26 +39,26 @@ By default active mode is enabled for SmartTags but disabled for any other devic
 
 ### Using HACS
 
-1. Add this repository as a custom repository in HACS. Either by manually adding `https://github.com/PixelShober/SmartThings-Tag` with category `integration` or simply click the following button:
+1. Add this repository as a custom repository in HACS. Either by manually adding `https://github.com/PixelShober/SmartThings-Find` with category `integration` or simply click the following button:
 
-[![Open your Home Assistant instance and open a repository inside the Home Assistant Community Store.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=PixelShober&repository=SmartThings-Tag&category=integration)
+[![Open your Home Assistant instance and open a repository inside the Home Assistant Community Store.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=PixelShober&repository=SmartThings-Find&category=integration)
 
-2. Search for "SmartThings Tag" in HACS and install the integration
+2. Search for "SmartThings Find" in HACS and install the integration
 3. Restart Home Assistant
 4. Proceed to [Setup instructions](#setup-instructions)
 
 ### Manual install
 
-1. Download the `custom_components/smartthings_tag` directory to your Home Assistant configuration directory
+1. Download the `custom_components/smartthings_find` directory to your Home Assistant configuration directory
 2. Restart Home Assistant
 3. Proceed to [Setup instructions](#setup-instructions)
 
 ## Setup Instructions
 
-[![Open your Home Assistant instance and start setting up a new integration.](https://my.home-assistant.io/badges/config_flow_start.svg)](https://my.home-assistant.io/redirect/config_flow_start/?domain=smartthings_tag)
+[![Open your Home Assistant instance and start setting up a new integration.](https://my.home-assistant.io/badges/config_flow_start.svg)](https://my.home-assistant.io/redirect/config_flow_start/?domain=smartthings_find)
 
 1. Go to the Integrations page  
-2. Search for "SmartThings Tag" (**do not confuse this with the built-in SmartThings integration!**)  
+2. Search for "SmartThings Find" (**do not confuse this with the built-in SmartThings integration!**)  
 3. Follow the on-screen configuration wizard:
    - **Login**: Click the provided link to log in to your Samsung account.
    - **Redirect**: After logging in, the browser will try to open a `ms-app://...` link. Cancel the external app prompt if it appears.
@@ -74,7 +74,7 @@ To enable debugging, you need to set the log level in `configuration.yaml`:
 logger:
   default: info
   logs:
-    custom_components.smartthings_tag: debug
+    custom_components.smartthings_find: debug
 ```
 
 ## License

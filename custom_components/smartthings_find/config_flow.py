@@ -107,7 +107,7 @@ class SmartThingsFindConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                      self.hass.async_create_task(self.hass.config_entries.async_reload(self.reauth_entry.entry_id))
                      return self.async_abort(reason="reauth_successful")
                 
-                return self.async_create_entry(title="SmartThings Tag", data=data)
+                return self.async_create_entry(title="SmartThings Find", data=data)
 
         # If we came from step_user, login_url is set. If we repost form with error, it is lost unless we store it?
         # But step_auth_code calls itself? 

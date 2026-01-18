@@ -5,11 +5,11 @@
     },
     "step": {
       "user": {
-        "title": "SmartThings Tag Login",
+        "title": "SmartThings Find Login",
         "description": "Initializing login..."
       },
       "auth_code": {
-        "title": "SmartThings Tag Login",
+        "title": "SmartThings Find Login",
         "description": "Please click [here]({login_url}) to log in. \n\nAfter logging in, copy the full ms-app:// URL you are redirected to (even if it shows an error) and paste it below. Do not paste the visible error page URL. If the browser asks to open an external app for the ms-app link, cancel it.\n\nHow to get the ms-app URL:\n1) Keep the browser tab open after login.\n2) Open Developer Tools (F12) and go to Network or Console.\n3) Look for a URL that starts with ms-app:// and copy the full URL.",
         "data": {
           "redirect_url": "Redirect URL"

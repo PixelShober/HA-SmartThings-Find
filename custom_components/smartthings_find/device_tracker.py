@@ -29,7 +29,7 @@ class SmartThingsDeviceTracker(DeviceTrackerEntity):
         self.device = device['data']
         self.device_id = self.device.get("device_id")
 
-        name = self.device.get("name") or self.device_id or "SmartThings Tag"
+        name = self.device.get("name") or self.device_id or "SmartThings Find"
         self._attr_unique_id = f"stf_device_tracker_{self.device_id}"
         self._attr_name = name
         self._attr_device_info = device['ha_dev_info']

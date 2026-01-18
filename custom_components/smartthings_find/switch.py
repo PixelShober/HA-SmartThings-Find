@@ -37,7 +37,7 @@ class RingSwitch(SwitchEntity):
         self.entry_id = entry_id
         self.device = device["data"]
         device_id = self.device.get("device_id")
-        name = self.device.get("name") or device_id or "SmartThings Tag"
+        name = self.device.get("name") or device_id or "SmartThings Find"
 
         self._attr_unique_id = f"stf_ring_switch_{device_id}"
         self._attr_name = f"{name} Ring"

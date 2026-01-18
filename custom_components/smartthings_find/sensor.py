@@ -26,7 +26,7 @@ class DeviceBatterySensor(SensorEntity):
         """Initialize the sensor."""
         self.coordinator = coordinator
         device_id = device['data'].get("device_id")
-        name = device['data'].get("name") or device_id or "SmartThings Tag"
+        name = device['data'].get("name") or device_id or "SmartThings Find"
         self._attr_unique_id = f"stf_device_battery_{device_id}"
         self._attr_name = f"{name} Battery"
         self._state = None

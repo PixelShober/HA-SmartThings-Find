@@ -988,7 +988,7 @@ async def get_devices(hass: HomeAssistant, session: aiohttp.ClientSession, entry
             if location_type:
                 name = f"{location_type} {device_id}"
             else:
-                name = device_id or "SmartThings Tag"
+                name = device_id or "SmartThings Find"
         icon_url = (
             device.get("iconUrl")
             or device.get("iconURL")
@@ -1013,7 +1013,7 @@ async def get_devices(hass: HomeAssistant, session: aiohttp.ClientSession, entry
             identifiers={identifier},
             manufacturer="Samsung",
             name=name,
-            model=location_type or "SmartThings Tag",
+            model=location_type or "SmartThings Find",
             configuration_url="https://smartthingsfind.samsung.com/"
         )
         devices += [{
@@ -1051,7 +1051,7 @@ async def get_device_location(hass: HomeAssistant, session: aiohttp.ClientSessio
         dict: The device location data.
     """
     dev_id = dev_data.get('device_id')
-    dev_name = dev_data.get('name') or dev_id or "SmartThings Tag"
+    dev_name = dev_data.get('name') or dev_id or "SmartThings Find"
     st_device_id = dev_data.get("st_device_id") or dev_id
     if not dev_data.get("is_tracker"):
         return {

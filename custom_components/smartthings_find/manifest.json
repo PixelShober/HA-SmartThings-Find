@@ -1,12 +1,12 @@
 {
-  "domain": "smartthings_tag",
-  "name": "SmartThings Tag",
+  "domain": "smartthings_find",
+  "name": "SmartThings Find",
   "after_dependencies": [
     "http"
   ],
   "version": "0.3",
-  "documentation": "https://github.com/gunhol/SmartThings-Tag",
-  "issue_tracker": "https://github.com/gunhol/SmartThings-Tag/issues",
+  "documentation": "https://github.com/PixelShober/SmartThings-Find",
+  "issue_tracker": "https://github.com/PixelShober/SmartThings-Find/issues",
   "integration_type": "hub",
   "dependencies": [],
   "codeowners": [
