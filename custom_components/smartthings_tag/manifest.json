@@ -10,7 +10,7 @@
   "integration_type": "hub",
   "dependencies": [],
   "codeowners": [
-    "@gunhol"
+    "@PixelShober"
   ],
   "requirements": [
     "requests",
