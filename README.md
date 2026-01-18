@@ -39,9 +39,9 @@ By default active mode is enabled for SmartTags but disabled for any other devic
 
 ### Using HACS
 
-1. Add this repository as a custom repository in HACS. Either by manually adding `https://github.com/PixelShober/SmartThings-Find` with category `integration` or simply click the following button:
+1. Add this repository as a custom repository in HACS. Either by manually adding `https://github.com/PixelShober/HA-SmartThings-Find` with category `integration` or simply click the following button:
 
-[![Open your Home Assistant instance and open a repository inside the Home Assistant Community Store.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=PixelShober&repository=SmartThings-Find&category=integration)
+[![Open your Home Assistant instance and open a repository inside the Home Assistant Community Store.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=PixelShober&repository=HA-SmartThings-Find&category=integration)
 
 2. Search for "SmartThings Find" in HACS and install the integration
 3. Restart Home Assistant
