@@ -11,8 +11,6 @@ Currently the integration creates these entities (trackers only):
 * `sensor`: Represents the battery level of the tag/device (not supported for earbuds!)
 * `switch`: Optimistic ring toggle (auto turns off after 120s).
 
-![screenshot](media/screenshot_1.png)
-
 This integration does **not** allow you to perform actions based on button presses on the SmartTag! There are other ways to do that.
 
 
@@ -41,9 +39,9 @@ By default active mode is enabled for SmartTags but disabled for any other devic
 
 ### Using HACS
 
-1. Add this repository as a custom repository in HACS. Either by manually adding `https://github.com/gunhol/SmartThings-Tag` with category `integration` or simply click the following button:
+1. Add this repository as a custom repository in HACS. Either by manually adding `https://github.com/PixelShober/SmartThings-Tag` with category `integration` or simply click the following button:
 
-[![Open your Home Assistant instance and open a repository inside the Home Assistant Community Store.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=gunhol&repository=SmartThings-Tag&category=integration)
+[![Open your Home Assistant instance and open a repository inside the Home Assistant Community Store.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=PixelShober&repository=SmartThings-Tag&category=integration)
 
 2. Search for "SmartThings Tag" in HACS and install the integration
 3. Restart Home Assistant
