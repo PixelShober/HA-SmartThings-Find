@@ -33,3 +33,12 @@ BATTERY_LEVELS = {
     'LOW': 15,
     'VERY_LOW': 5
 }
+
+# SmartThings Device API (used by uTag for all tags, including third-party)
+SMARTTHINGS_TAG_OCF_TYPE = "x.com.st.d.tag"
+SMARTTHINGS_DEVICES_URL = (
+    "https://client.smartthings.com/devices"
+    "?includeAllowedActions=true&includeMfuLocations=true"
+    "&includeUserDevices=false&excludeLocationDevices=false"
+    "&includeGroups=true&includeHidden=true&exclusiveToHidden=false"
+)
