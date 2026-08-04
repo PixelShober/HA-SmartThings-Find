@@ -4,7 +4,7 @@
   "after_dependencies": [
     "http"
   ],
-  "version": "0.3",
+  "version": "0.3.1",
   "documentation": "https://github.com/PixelShober/HA-SmartThings-Find",
   "issue_tracker": "https://github.com/PixelShober/HA-SmartThings-Find/issues",
   "integration_type": "hub",

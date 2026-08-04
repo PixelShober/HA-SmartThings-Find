@@ -29,7 +29,8 @@ from .const import (
     CLIENT_ID_AUTH, CLIENT_ID_FIND, CLIENT_ID_ONECONNECT, SCOPE_AUTH, SCOPE_FIND,
     CONF_ACCESS_TOKEN, CONF_REFRESH_TOKEN, CONF_AUTH_SERVER_URL, CONF_USER_ID,
     CONF_IOT_ACCESS_TOKEN, CONF_IOT_REFRESH_TOKEN, CONF_DEVICE_ID,
-    CONF_INSTALLED_APP_ID, CONF_ST_USER_UUID
+    CONF_INSTALLED_APP_ID, CONF_ST_USER_UUID,
+    SMARTTHINGS_TAG_OCF_TYPE, SMARTTHINGS_DEVICES_URL,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -913,55 +914,175 @@ def extract_best_location(operations: list, dev_name: str) -> tuple[dict, dict]:
     if used_op:
         return used_op, used_loc
     return None, None
-async def get_devices(hass: HomeAssistant, session: aiohttp.ClientSession, entry_id: str) -> list:
-    """
-    Retrieves a list of SmartThings Find devices via the SmartThings installed app API.
 
-    Args:
-        hass (HomeAssistant): Home Assistant instance.
-        session (aiohttp.ClientSession): The current session.
 
-    Returns:
-        list: A list of devices if successful, empty list otherwise.
-    """
-    try:
+def _is_allowed_tag_device(device: dict, user_id: str | None) -> bool:
+    """Mirror uTag ownership/share checks for SmartThings Device API tags."""
+    if not user_id:
+        return True
+    metadata = (device.get("bleD2D") or {}).get("metadata") or {}
+    onboarded = metadata.get("onboardedBy") or {}
+    if onboarded.get("saGuid") == user_id:
+        return True
+    shareable = metadata.get("shareable") or {}
+    if shareable.get("enabled"):
+        members = shareable.get("members") or []
+        if any(member.get("saGuid") == user_id for member in members):
+            return True
+    return False
+
+
+def _build_device_entry(
+    hass: HomeAssistant,
+    *,
+    device_id: str,
+    name: str,
+    icon_url: str | None,
+    location_type: str,
+    is_tracker: bool,
+    owner_id: str | None,
+    sa_guid: str | None,
+    fmm_device_id: str | None,
+    st_device_id: str | None,
+    share_geolocation: bool | None,
+    mutual_agreement: bool | None,
+    raw_device: dict,
+    manufacturer: str = "Samsung",
+    model: str | None = None,
+) -> dict | None:
+    if isinstance(name, str):
+        name = _html_unescape(name)
+    if not name:
+        name = device_id or "SmartThings Find"
+
+    identifier = (DOMAIN, device_id)
+    registry = device_registry.async_get(hass)
+    ha_dev = registry.async_get_device({identifier})
+    if ha_dev and ha_dev.disabled:
+        _LOGGER.debug(
+            "Ignoring disabled device: '%s' (disabled by %s)",
+            name,
+            ha_dev.disabled_by,
+        )
+        return None
+    if ha_dev and not ha_dev.name_by_user:
+        current_name = ha_dev.name or ""
+        if current_name != name and _html_unescape(current_name) == name:
+            registry.async_update_device(ha_dev.id, name=name)
+    _sync_entity_names(hass, device_id, name)
+
+    ha_dev_info = DeviceInfo(
+        identifiers={identifier},
+        manufacturer=manufacturer,
+        name=name,
+        model=model or location_type or "SmartThings Find",
+        configuration_url="https://smartthingsfind.samsung.com/",
+    )
+    return {
+        "data": {
+            "device_id": device_id,
+            "name": name,
+            "original_name": name,
+            "icon_url": icon_url,
+            "location_type": location_type,
+            "is_tracker": is_tracker,
+            "owner_id": owner_id,
+            "sa_guid": sa_guid,
+            "fmm_device_id": fmm_device_id,
+            "st_device_id": st_device_id,
+            "share_geolocation": share_geolocation,
+            "mutual_agreement": mutual_agreement,
+            "raw_device": raw_device,
+        },
+        "ha_dev_info": ha_dev_info,
+    }
+
+
+async def _fetch_fmm_devices_data(
+    hass: HomeAssistant,
+    session: aiohttp.ClientSession,
+    entry_id: str,
+) -> list:
+    status, response = await _execute_installed_app(
+        hass,
+        session,
+        entry_id,
+        "GET",
+        "/devices",
+    )
+    if status != 200:
+        _LOGGER.error("Failed to retrieve devices [%s]: %s", status, response)
+        return []
+
+    status_code, message, error_code = _parse_installed_apps_response(response)
+    if status_code == 401 or error_code == "UnauthorizedError":
+        await refresh_iot_token(hass, session, entry_id)
         status, response = await _execute_installed_app(
             hass,
             session,
             entry_id,
             "GET",
-            "/devices"
+            "/devices",
         )
         if status != 200:
-            _LOGGER.error("Failed to retrieve devices [%s]: %s", status, response)
-            return []
-
-        status_code, message, error_code = _parse_installed_apps_response(response)
-        if status_code == 401 or error_code == "UnauthorizedError":
-            await refresh_iot_token(hass, session, entry_id)
-            status, response = await _execute_installed_app(
-                hass,
-                session,
-                entry_id,
-                "GET",
-                "/devices"
+            _LOGGER.error(
+                "Failed to retrieve devices after refresh [%s]: %s",
+                status,
+                response,
             )
-            if status != 200:
-                _LOGGER.error("Failed to retrieve devices after refresh [%s]: %s", status, response)
-                return []
-            status_code, message, error_code = _parse_installed_apps_response(response)
-        if status_code != 200 or message is None:
-            _LOGGER.error("Device list error [%s/%s]: %s", status_code, error_code, response)
             return []
+        status_code, message, error_code = _parse_installed_apps_response(response)
+    if status_code != 200 or message is None:
+        _LOGGER.error(
+            "Device list error [%s/%s]: %s",
+            status_code,
+            error_code,
+            response,
+        )
+        return []
+    return message.get("devices", [])
 
-        devices_data = message.get("devices", [])
 
+async def _fetch_smartthings_tag_devices(
+    hass: HomeAssistant,
+    session: aiohttp.ClientSession,
+    entry_id: str,
+) -> list:
+    """Fetch tags from SmartThings Device API (includes third-party tags)."""
+    all_items: list = []
+    url: str | None = SMARTTHINGS_DEVICES_URL
+    while url:
+        status, data = await _smartthings_get_json(hass, session, entry_id, url)
+        if status != 200 or not data:
+            _LOGGER.error("Failed to retrieve SmartThings tag devices: %s", data)
+            return []
+        all_items.extend(data.get("items", []))
+        next_link = (data.get("_links") or {}).get("next") or {}
+        url = next_link.get("href")
+
+    return [
+        item for item in all_items
+        if item.get("ocfDeviceType") == SMARTTHINGS_TAG_OCF_TYPE
+    ]
+
+
+async def get_devices(hass: HomeAssistant, session: aiohttp.ClientSession, entry_id: str) -> list:
+    """
+    Retrieves SmartThings Find tracker devices.
+
+    Uses the FMM installed-app device list for Samsung-native trackers and merges
+    in tags from the SmartThings Device API (required for third-party tags such as
+    Ugreen FineTrack).
+    """
+    try:
+        devices_data = await _fetch_fmm_devices_data(hass, session, entry_id)
     except ConfigEntryAuthFailed:
         raise
     except Exception as e:
-        _LOGGER.error(f"Error listing devices: {e}")
+        _LOGGER.error("Error listing FMM devices: %s", e)
         return []
-    devices = []
+
+    devices_by_id: dict[str, dict] = {}
     for device in devices_data:
         device_id = (
             device.get("stDid")
@@ -975,6 +1096,11 @@ async def get_devices(hass: HomeAssistant, session: aiohttp.ClientSession, entry
         location_type_norm = str(location_type).upper()
         is_tracker = location_type_norm == "TRACKER"
         if not is_tracker:
+            _LOGGER.debug(
+                "Skipping non-tracker FMM device (locationType=%s, id=%s)",
+                location_type,
+                device_id,
+            )
             continue
         name = (
             device.get("stDevName")
@@ -982,60 +1108,82 @@ async def get_devices(hass: HomeAssistant, session: aiohttp.ClientSession, entry
             or device.get("name")
             or device.get("label")
         )
-        if isinstance(name, str):
-            name = _html_unescape(name)
-        if not name:
-            if location_type:
-                name = f"{location_type} {device_id}"
-            else:
-                name = device_id or "SmartThings Find"
         icon_url = (
             device.get("iconUrl")
             or device.get("iconURL")
             or device.get("imageUrl")
             or device.get("imgUrl")
         )
-        identifier = (DOMAIN, device_id)
-        registry = device_registry.async_get(hass)
-        ha_dev = registry.async_get_device({identifier})
-        if ha_dev and ha_dev.disabled:
-             _LOGGER.debug(
-                f"Ignoring disabled device: '{name}' (disabled by {ha_dev.disabled_by})")
-             continue
-        if ha_dev and not ha_dev.name_by_user:
-            current_name = ha_dev.name or ""
-            if current_name != name and _html_unescape(current_name) == name:
-                registry.async_update_device(ha_dev.id, name=name)
-        _sync_entity_names(hass, device_id, name)
-        name_original = name
-
-        ha_dev_info = DeviceInfo(
-            identifiers={identifier},
-            manufacturer="Samsung",
-            name=name,
-            model=location_type or "SmartThings Find",
-            configuration_url="https://smartthingsfind.samsung.com/"
+        entry = _build_device_entry(
+            hass,
+            device_id=device_id,
+            name=name or device_id,
+            icon_url=icon_url,
+            location_type=location_type,
+            is_tracker=is_tracker,
+            owner_id=device.get("stOwnerId") or device.get("ownerId"),
+            sa_guid=device.get("saGuid"),
+            fmm_device_id=device.get("fmmDevId"),
+            st_device_id=device.get("stDid") or device.get("deviceId"),
+            share_geolocation=device.get("shareGeolocation"),
+            mutual_agreement=device.get("mutualAgreement"),
+            raw_device=device,
         )
-        devices += [{
-            "data": {
-                "device_id": device_id,
-                "name": name,
-                "original_name": name_original,
-                "icon_url": icon_url,
-                "location_type": location_type,
-                "is_tracker": is_tracker,
-                "owner_id": device.get("stOwnerId") or device.get("ownerId"),
-                "sa_guid": device.get("saGuid"),
-                "fmm_device_id": device.get("fmmDevId"),
-                "st_device_id": device.get("stDid") or device.get("deviceId"),
-                "share_geolocation": device.get("shareGeolocation"),
-                "mutual_agreement": device.get("mutualAgreement"),
-                "raw_device": device,
-            },
-            "ha_dev_info": ha_dev_info
-        }]
-        _LOGGER.debug(f"Adding device: {name}")
-    return devices
+        if entry:
+            devices_by_id[device_id] = entry
+            _LOGGER.debug("Adding FMM device: %s", entry["data"]["name"])
+
+    try:
+        tag_devices = await _fetch_smartthings_tag_devices(hass, session, entry_id)
+    except ConfigEntryAuthFailed:
+        raise
+    except Exception as e:
+        _LOGGER.warning("Error listing SmartThings tag devices: %s", e)
+        tag_devices = []
+
+    user_id = hass.data[DOMAIN][entry_id].get(CONF_USER_ID)
+    for tag in tag_devices:
+        device_id = tag.get("deviceId")
+        if not device_id or device_id in devices_by_id:
+            continue
+        if not _is_allowed_tag_device(tag, user_id):
+            _LOGGER.debug(
+                "Skipping SmartThings tag device %s (not owned/shared for user)",
+                device_id,
+            )
+            continue
+
+        metadata = (tag.get("bleD2D") or {}).get("metadata") or {}
+        vendor = metadata.get("vendor") or {}
+        shareable = metadata.get("shareable") or {}
+        icons = tag.get("icons") or {}
+        name = tag.get("label") or tag.get("name") or device_id
+        entry = _build_device_entry(
+            hass,
+            device_id=device_id,
+            name=name,
+            icon_url=icons.get("coloredIcon"),
+            location_type="TRACKER",
+            is_tracker=True,
+            owner_id=tag.get("ownerId"),
+            sa_guid=(metadata.get("onboardedBy") or {}).get("saGuid"),
+            fmm_device_id=None,
+            st_device_id=device_id,
+            share_geolocation=shareable.get("enabled"),
+            mutual_agreement=None,
+            raw_device=tag,
+            manufacturer=vendor.get("mnId") or "SmartThings",
+            model=vendor.get("modelName") or "Tag",
+        )
+        if entry:
+            devices_by_id[device_id] = entry
+            _LOGGER.info(
+                "Adding SmartThings tag from Device API: %s (model=%s)",
+                entry["data"]["name"],
+                vendor.get("modelName") or "unknown",
+            )
+
+    return list(devices_by_id.values())
 
 
 async def get_device_location(hass: HomeAssistant, session: aiohttp.ClientSession, dev_data: dict, entry_id: str) -> dict:
