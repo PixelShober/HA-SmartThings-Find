@@ -68,11 +68,11 @@ class RingSwitch(SwitchEntity):
             self._handle_auto_off,
         )
 
-    def _handle_auto_off(self, _now) -> None:
+    async def _handle_auto_off(self, _now) -> None:
         self._auto_off_cancel = None
         if not self._is_on:
             return
-        self.hass.async_create_task(self._async_auto_off())
+        await self._async_auto_off()
 
     async def _async_auto_off(self) -> None:
         session = self.hass.data[DOMAIN][self.entry_id]["session"]
