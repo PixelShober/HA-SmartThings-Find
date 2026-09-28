@@ -32,7 +32,8 @@ from .const import (
     CONF_ACCESS_TOKEN, CONF_REFRESH_TOKEN, CONF_AUTH_SERVER_URL, CONF_USER_ID,
     CONF_IOT_ACCESS_TOKEN, CONF_IOT_REFRESH_TOKEN, CONF_DEVICE_ID,
     CONF_INSTALLED_APP_ID, CONF_ST_USER_UUID,
-    CONF_USER_AUTH_TOKEN, CONF_LOGIN_ID, CONF_WEB_JSESSIONID, URL_STF
+    CONF_USER_AUTH_TOKEN, CONF_LOGIN_ID, CONF_WEB_JSESSIONID, URL_STF,
+    SMARTTHINGS_TAG_OCF_TYPE, SMARTTHINGS_DEVICES_URL
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -927,6 +928,53 @@ def extract_best_location(operations: list, dev_name: str) -> tuple[dict, dict]:
     if used_op:
         return used_op, used_loc
     return None, None
+
+
+async def _get_device_api_tags(
+    hass: HomeAssistant,
+    session: aiohttp.ClientSession,
+    entry_id: str,
+    fmm_devices: list
+) -> list:
+    """
+    Tags the FMM /devices list misses (third-party tags, and on some accounts
+    Samsung SmartTags too), taken from the SmartThings Device API and returned
+    in FMM shape so get_devices handles them like any other tracker.
+    """
+    known = {d.get("stDid") or d.get("deviceId") for d in fmm_devices}
+    user_id = hass.data[DOMAIN][entry_id].get(CONF_USER_ID)
+    url = SMARTTHINGS_DEVICES_URL
+    tags = []
+    while url:
+        status, data = await _smartthings_get_json(hass, session, entry_id, url)
+        if status != 200 or not data:
+            _LOGGER.warning("Failed to fetch SmartThings devices [%s]: %s", status, data)
+            return []
+        for item in data.get("items", []):
+            device_id = item.get("deviceId")
+            if item.get("ocfDeviceType") != SMARTTHINGS_TAG_OCF_TYPE or not device_id or device_id in known:
+                continue
+            meta = (item.get("bleD2D") or {}).get("metadata") or {}
+            owner = (meta.get("onboardedBy") or {}).get("saGuid")
+            shared = meta.get("shareable") or {}
+            members = (shared.get("members") or []) if shared.get("enabled") else []
+            # Same ownership/share check as uTag, so other household members' tags stay out
+            if user_id and owner != user_id and not any(m.get("saGuid") == user_id for m in members):
+                continue
+            _LOGGER.info("Adding tag from SmartThings Device API: %s", item.get("label") or device_id)
+            tags.append({
+                "stDid": device_id,
+                "stDevName": item.get("label") or item.get("name"),
+                "locationType": "TRACKER",
+                "iconUrl": (item.get("icons") or {}).get("coloredIcon"),
+                "stOwnerId": item.get("ownerId"),
+                "saGuid": owner,
+                "shareGeolocation": shared.get("enabled"),
+            })
+        url = ((data.get("_links") or {}).get("next") or {}).get("href")
+    return tags
+
+
 async def get_devices(hass: HomeAssistant, session: aiohttp.ClientSession, entry_id: str) -> list:
     """
     Retrieves a list of SmartThings Find devices via the SmartThings installed app API.
@@ -975,6 +1023,12 @@ async def get_devices(hass: HomeAssistant, session: aiohttp.ClientSession, entry
     except Exception as e:
         _LOGGER.error(f"Error listing devices: {e}")
         return []
+    try:
+        devices_data += await _get_device_api_tags(hass, session, entry_id, devices_data)
+    except ConfigEntryAuthFailed:
+        raise
+    except Exception as e:
+        _LOGGER.warning("Error listing SmartThings tags: %s", e)
     devices = []
     for device in devices_data:
         device_id = (

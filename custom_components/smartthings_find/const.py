@@ -44,6 +44,15 @@ CONF_LOGIN_ID = "login_id"
 CONF_WEB_JSESSIONID = "web_jsessionid"
 URL_STF = "https://smartthingsfind.samsung.com"
 
+# SmartThings Device API: lists tags the FMM /devices list misses (same source as uTag)
+SMARTTHINGS_TAG_OCF_TYPE = "x.com.st.d.tag"
+SMARTTHINGS_DEVICES_URL = (
+    "https://client.smartthings.com/devices"
+    "?includeAllowedActions=true&includeMfuLocations=true"
+    "&includeUserDevices=false&excludeLocationDevices=false"
+    "&includeGroups=true&includeHidden=true&exclusiveToHidden=false"
+)
+
 BATTERY_LEVELS = {
     'FULL': 100,
     'MEDIUM': 50,

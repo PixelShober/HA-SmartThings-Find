@@ -2,7 +2,7 @@ import logging
 from homeassistant.components.device_tracker.config_entry import TrackerEntity as DeviceTrackerEntity
 from homeassistant.components.device_tracker.const import SourceType
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .const import DOMAIN
@@ -42,8 +42,35 @@ class SmartThingsDeviceTracker(DeviceTrackerEntity):
         icon_url = self.device.get("icon_url")
         if icon_url:
             self._attr_entity_picture = icon_url
-        self.async_update = coordinator.async_add_listener(self.async_write_ha_state)
-    
+        self._last_fix_key = None
+        self.async_on_remove(coordinator.async_add_listener(self._handle_coordinator_update))
+
+    def _fix_key(self):
+        """Identity of the current fix. Excludes battery and volatile API telemetry."""
+        data = self.coordinator.data.get(self.device_id) or {}
+        used_loc = data.get('used_loc') or {}
+        return (
+            bool(data.get('update_success')),
+            bool(data.get('location_found')),
+            used_loc.get('gps_date'),
+            used_loc.get('latitude'),
+            used_loc.get('longitude'),
+            used_loc.get('gps_accuracy'),
+        )
+
+    @callback
+    def _handle_coordinator_update(self) -> None:
+        """Write state only when the fix or availability actually changed.
+
+        TrackerEntity forces every write to bump last_updated, which re-promotes a
+        stale tag over a live phone in the person integration's source selection.
+        """
+        key = self._fix_key()
+        if key == self._last_fix_key:
+            return
+        self._last_fix_key = key
+        self.async_write_ha_state()
+
     def async_write_ha_state(self):
         if not self.enabled:
             _LOGGER.debug(f"Ignoring state write request for disabled entity '{self.entity_id}'")

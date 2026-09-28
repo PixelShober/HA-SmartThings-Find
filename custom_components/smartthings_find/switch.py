@@ -158,6 +158,7 @@ class RingSwitch(CoordinatorEntity, SwitchEntity):
             self._auto_off_cancel()
             self._auto_off_cancel = None
 
+    @callback  # without it async_call_later runs this in an executor thread
     def _handle_auto_off(self, _now) -> None:
         self._auto_off_cancel = None
         if self._is_on:
