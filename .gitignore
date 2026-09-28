@@ -18,3 +18,15 @@ config/*
 
 # Dummy JSON responses
 test_data/
+
+# Editor / desktop cruft
+.directory
+.claude/
+
+# Login bot: browser profile holds Samsung login cookies - never commit
+bot/profile/
+bot/venv/
+bot/credentials
+
+# Private work notes (infrastructure details) - never publish
+chat-summaries/

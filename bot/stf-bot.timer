@@ -1,0 +1,11 @@
+[Unit]
+Description=Run the SmartThings Find login bot hourly
+
+[Timer]
+OnBootSec=5min
+OnUnitActiveSec=1h
+RandomizedDelaySec=5min
+Persistent=true
+
+[Install]
+WantedBy=timers.target

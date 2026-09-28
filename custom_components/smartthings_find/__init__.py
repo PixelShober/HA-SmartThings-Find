@@ -1,11 +1,12 @@
 from datetime import timedelta
 import logging
 import aiohttp
+from homeassistant.components import persistent_notification
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.typing import ConfigType
 from homeassistant.const import Platform
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
-from homeassistant.helpers.aiohttp_client import async_get_clientsession
+from homeassistant.helpers.aiohttp_client import async_create_clientsession
 from homeassistant.exceptions import ConfigEntryAuthFailed
 from homeassistant.config_entries import ConfigEntry
 
@@ -20,6 +21,9 @@ from .const import (
     CONF_DEVICE_ID,
     CONF_ST_USER_UUID,
     CONF_INSTALLED_APP_ID,
+    CONF_USER_AUTH_TOKEN,
+    CONF_LOGIN_ID,
+    CONF_WEB_JSESSIONID,
     CONF_ACTIVE_MODE_OTHERS,
     CONF_ACTIVE_MODE_OTHERS_DEFAULT,
     CONF_ACTIVE_MODE_SMARTTAGS,
@@ -27,9 +31,12 @@ from .const import (
     CONF_UPDATE_INTERVAL,
     CONF_UPDATE_INTERVAL_DEFAULT,
 )
-from .utils import get_devices, get_device_location
+from .utils import get_devices, get_device_location, get_ring_status, _web_ensure_session
 
 _LOGGER = logging.getLogger(__name__)
+
+# Fixed id so automations can trigger on it (trigger platform: persistent_notification)
+WEB_SESSION_NOTIFICATION = "smartthings_find_web_session"
 
 PLATFORMS = [Platform.DEVICE_TRACKER, Platform.SENSOR, Platform.SWITCH]
 
@@ -64,10 +71,15 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         CONF_USER_ID: user_id,
         CONF_DEVICE_ID: device_id,
         CONF_ST_USER_UUID: st_user_uuid,
-        CONF_INSTALLED_APP_ID: installed_app_id
+        CONF_INSTALLED_APP_ID: installed_app_id,
+        CONF_USER_AUTH_TOKEN: entry.data.get(CONF_USER_AUTH_TOKEN),
+        CONF_LOGIN_ID: entry.data.get(CONF_LOGIN_ID),
+        # Set in the options flow - the one thing that cannot be automated.
+        CONF_WEB_JSESSIONID: entry.options.get(CONF_WEB_JSESSIONID),
     })
 
-    session = async_get_clientsession(hass)
+    # Web authentication uses cookies, which must stay isolated to this account.
+    session = async_create_clientsession(hass)
     active_smarttags = entry.options.get(CONF_ACTIVE_MODE_SMARTTAGS, CONF_ACTIVE_MODE_SMARTTAGS_DEFAULT)
     active_others = entry.options.get(CONF_ACTIVE_MODE_OTHERS, CONF_ACTIVE_MODE_OTHERS_DEFAULT)
     hass.data[DOMAIN][entry.entry_id].update({
@@ -143,6 +155,27 @@ class SmartThingsFindCoordinator(DataUpdateCoordinator):
             update_interval=timedelta(seconds=update_interval)  # Update interval for all entities
         )
 
+    def _notify_web_session(self, ok: bool) -> None:
+        """Raise/clear a notification on state changes only, so it is not re-posted every poll.
+        Starts as unknown: a reload after a fresh cookie must still clear an old notification."""
+        if ok == getattr(self, "_web_ok", None):
+            return
+        self._web_ok = ok
+        if ok:
+            persistent_notification.async_dismiss(self.hass, WEB_SESSION_NOTIFICATION)
+            return
+        persistent_notification.async_create(
+            self.hass,
+            "Die Web-Session ist abgelaufen – Handy und Buds lassen sich gerade nicht "
+            "klingeln (Tags schon). Normalerweise erneuert der Login-Bot sie innerhalb "
+            "einer Stunde von selbst. Bleibt diese Meldung stehen, ist der Bot ausgefallen: "
+            "dann auf smartthingsfind.samsung.com anmelden, das JSESSIONID-Cookie kopieren "
+            "und unter Einstellungen → Geräte & Dienste → SmartThings Find → Konfigurieren "
+            "einfügen.",
+            title="SmartThings Find: Web-Session abgelaufen",
+            notification_id=WEB_SESSION_NOTIFICATION,
+        )
+
     async def _async_update_data(self):
         """Fetch data from SmartThings Find."""
         try:
@@ -153,6 +186,25 @@ class SmartThingsFindCoordinator(DataUpdateCoordinator):
                 tag_data = await get_device_location(self.hass, self.session, dev_data, self.entry_id)
                 tags[dev_data['device_id']] = tag_data
             _LOGGER.debug(f"Fetched {len(tags)} locations")
+            # Keep-alive: the web session idles out after 30 min and cannot be
+            # re-minted, so touch it on every poll. Cheap, and never fatal -
+            # tags ring through the tracker API regardless.
+            if self.hass.data[DOMAIN][self.entry_id].get(CONF_WEB_JSESSIONID):
+                web_ok = await _web_ensure_session(self.hass, self.session, self.entry_id)
+                self._notify_web_session(web_ok)
+                if not web_ok:
+                    _LOGGER.warning(
+                        "SmartThings Find web session is no longer valid - paste a "
+                        "fresh JSESSIONID in the integration options to keep "
+                        "ringing phones and earbuds"
+                    )
+                else:
+                    # Live ring state, so rings started from the app show up too
+                    for device in self.devices:
+                        dev_data = device['data']
+                        if not dev_data.get("is_tracker"):
+                            tags[dev_data['device_id']]["ring"] = await get_ring_status(
+                                self.hass, self.session, self.entry_id, dev_data)
             return tags
         except ConfigEntryAuthFailed as err:
             raise

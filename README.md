@@ -6,10 +6,33 @@ This is a fork of the original repository by [tomskra](https://github.com/tomskr
 
 This integration adds support for devices from Samsung SmartThings Find. While intended mainly for Samsung SmartTags, it also works with other devices, such as phones, tablets, watches and earbuds.
 
-Currently the integration creates these entities (trackers only):
-* `device_tracker`: Shows the location of the tag/device.
-* `sensor`: Represents the battery level of the tag/device (not supported for earbuds!)
-* `switch`: Optimistic ring toggle (auto turns off after 120s).
+Currently the integration creates these entities:
+* `device_tracker`: Shows the location of the tag (trackers only).
+* `sensor`: Represents the battery level of the tag (trackers only).
+* `switch` (`… Ring`): Ring on / off for **all** device types — SmartTags, phones,
+  tablets, watches and earbuds.
+  * Phones and earbuds report their **real** ring state (on while ringing, off once
+    they stop, also when rung from the app or the website).
+  * Tags cannot report back, so their switch means "ring request accepted" and turns
+    itself off (with a stop command) after 200 s. Switching it off stops the tag.
+  * Attributes: `ring_status` (`idle`, `pending`, `ringing`, `requested`, `error_*`),
+    `ring_message` (the text the SmartThings Find website shows, in German) and the
+    raw operation codes.
+
+### How ringing works
+
+| Device | Path | Setup |
+|---|---|---|
+| SmartTags | SmartThings installed-app proxy, `PUT /trackerapi` `/trackers/<id>/ring` (same as the SmartThings app) | none |
+| Phones, tablets, watches, earbuds | `smartthingsfind.samsung.com` web frontend, `dm/addOperation.do` | a web session cookie (see below) |
+
+The tracker API cannot ring anything but tags, and the web session it would take to
+ring phones cannot be created from the OAuth login (Samsung's server-side policy for
+the web client forbids it). Tags deliberately use the tracker API: a tag rung via
+the website **cannot be stopped again**, one rung via the tracker API can. The web
+API is only a fallback for tags.
+
+All details, measurements and dead ends are documented (in German) in [RING.md](RING.md).
 
 This integration does **not** allow you to perform actions based on button presses on the SmartTag! There are other ways to do that.
 
@@ -18,15 +41,37 @@ This integration does **not** allow you to perform actions based on button press
 
 - **API Limitations**: Created by reverse engineering the SmartThings Find API, this integration might stop working at any time if changes occur on the SmartThings side.
 - **Limited Testing**: The integration hasn't been thoroughly tested. If you encounter issues, please report them by creating an issue.
-- **Feature Constraints**: The integration can only support features available on the [SmartThings Find website](https://smartthingsfind.samsung.com/). Ring stop is exposed for trackers, but support depends on the backend; if it fails the API will reject the command. The ring switch is optimistic because the ring status cannot be read from the OAuth API.
+- **Feature Constraints**: The integration can only support features available on the [SmartThings Find website](https://smartthingsfind.samsung.com/) and the SmartThings tracker API. Tags never report whether they are ringing, so their switch shows the accepted request, not the actual sound.
 
 ## Notes on authentication
 This integration now uses a standard OAuth 2.0 flow with PKCE to authenticate with Samsung servers. This mirrors the authentication used by official Samsung apps, providing a persistent session that automatically refreshes. You no longer need to worry about manually re-authenticating or sessions expiring unexpectedly.
 
 ## Notes on connection to the devices
-Being able to let a SmartTag ring depends on a phone/tablet nearby which forwards your request via Bluetooth. If your phone is not near your tag, you can't make it ring. The location should still update if any Galaxy device is nearby. 
+Being able to let a SmartTag ring depends on a Galaxy phone/tablet nearby which forwards your request via Bluetooth. If no such device is near your tag, the request is accepted but nothing rings until one comes close. The location should still update if any Galaxy device is nearby.
 
-If ringing your tag does not work, first try to let it ring from the [SmartThings Find website](https://smartthingsfind.samsung.com/). If it does not work from there, it can not work from Home Assistant too! Note that letting it ring with the SmartThings Mobile App is not the same as the website. Just because it does work in the App, does not mean it works on the web. So always use the web version to do your tests.
+If ringing your tag does not work, try it from the SmartThings **app** — Home Assistant uses the same tracker API for tags. The website uses a different path that cannot stop a ringing tag again.
+
+## Web session for phones and earbuds
+
+Ringing phones, tablets, watches and earbuds needs a session of the SmartThings Find website. It cannot be created automatically, so it is handed over once:
+
+1. Log in at <https://smartthingsfind.samsung.com> in a browser.
+2. F12 → **Application** → **Cookies** → `https://smartthingsfind.samsung.com` → copy the value of `JSESSIONID`.
+   If there are two, take the one **with** a suffix like `….fmm-prd-cns-1` and keep the value unchanged.
+3. Home Assistant: **Settings → Devices & services → SmartThings Find → Configure**, paste it into the *JSESSIONID* field.
+
+The integration keeps the session alive on every poll. Samsung still ends it eventually (password change, logout, server side limits). When that happens, a notification `smartthings_find_web_session` appears (usable as an automation trigger) and disappears once a valid session is back. Tags keep ringing without it.
+
+### Optional: login bot
+
+[`bot/`](bot/) contains a small bot that logs in with a real browser (patchright/Chromium on a virtual display, since headless triggers reCAPTCHA) and pushes a fresh session into Home Assistant through the options flow. It runs hourly via systemd and only logs in when the last session is dead.
+
+- Credentials: `~/.config/stf-bot/credentials` of the bot user, `chmod 600` (the bot refuses otherwise), with `STF_EMAIL`, `STF_PASSWORD`, `HA_URL`, `HA_TOKEN` (a long-lived access token of an admin user).
+- Several Home Assistant instances: comma-separated `HA_URL` and `HA_TOKEN` in the same order.
+- Failures show up as notification `smartthings_find_login_bot`. After a failed login it waits 6 h to avoid locking the Samsung account.
+- Wrong tokens make Home Assistant ban the bot's IP (`ip_ban`, then every request gets 403). Remove the entry from `ip_bans.yaml` and restart.
+
+Setup notes (in German) are in [RING.md](RING.md#automatisch-erneuern-login-bot-seit-2026-09-25).
 
 ## Notes on active/passive mode
 

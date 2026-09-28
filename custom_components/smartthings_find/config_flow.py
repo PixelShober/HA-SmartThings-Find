@@ -14,6 +14,9 @@ from .const import (
     CONF_IOT_ACCESS_TOKEN,
     CONF_IOT_REFRESH_TOKEN,
     CONF_USER_ID,
+    CONF_USER_AUTH_TOKEN,
+    CONF_LOGIN_ID,
+    CONF_WEB_JSESSIONID,
     CONF_AUTH_SERVER_URL,
     CONF_DEVICE_ID,
     CONF_UPDATE_INTERVAL,
@@ -87,11 +90,8 @@ class SmartThingsFindConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     _LOGGER.error("Auth failed: %s", err)
                 # We might want to restart flow or let user try again
             else:
-                device_id = (
-                    self.hass.data.get(DOMAIN, {})
-                    .get("auth_data", {})
-                    .get("device_id")
-                )
+                auth_data = self.hass.data.get(DOMAIN, {}).get("auth_data", {})
+                device_id = auth_data.get("device_id")
                 data = {
                     CONF_ACCESS_TOKEN: token_data_find.get('access_token'),
                     CONF_REFRESH_TOKEN: token_data_find.get('refresh_token'),
@@ -99,7 +99,9 @@ class SmartThingsFindConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     CONF_IOT_REFRESH_TOKEN: token_data_iot.get('refresh_token'),
                     CONF_USER_ID: user_id,
                     CONF_AUTH_SERVER_URL: auth_server_url,
-                    CONF_DEVICE_ID: device_id
+                    CONF_DEVICE_ID: device_id,
+                    CONF_USER_AUTH_TOKEN: auth_data.get("user_auth_token"),
+                    CONF_LOGIN_ID: auth_data.get("login_id"),
                 }
                 
                 if self.reauth_entry:
@@ -135,6 +137,9 @@ class SmartThingsFindConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
     
     async def async_step_reconfigure(self, user_input: dict[str, Any] | None = None):
+        self.reauth_entry = self.hass.config_entries.async_get_entry(
+            self.context["entry_id"]
+        )
         return await self.async_step_user()
     
     @staticmethod
@@ -177,6 +182,14 @@ class SmartThingsFindOptionsFlowHandler(OptionsFlowWithConfigEntry):
                         CONF_ACTIVE_MODE_OTHERS, CONF_ACTIVE_MODE_OTHERS_DEFAULT
                     ),
                 ): bool,
+                # Ringing phones/tablets/earbuds needs a session from the web
+                # frontend, which cannot be minted headlessly (see const.py).
+                # Paste the JSESSIONID cookie from a logged-in browser here;
+                # it is then kept alive by the regular polling.
+                vol.Optional(
+                    CONF_WEB_JSESSIONID,
+                    default=self.options.get(CONF_WEB_JSESSIONID, ""),
+                ): str,
             }
         )
         return self.async_show_form(step_id="init", data_schema=data_schema)

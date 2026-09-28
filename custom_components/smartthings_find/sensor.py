@@ -15,6 +15,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
     coordinator = hass.data[DOMAIN][entry.entry_id]["coordinator"]
     entities = []
     for device in devices:
+        # Only trackers report a battery level through this API
+        if not device["data"].get("is_tracker"):
+            continue
         entities += [DeviceBatterySensor(hass, coordinator, device)]
     async_add_entities(entities)
 

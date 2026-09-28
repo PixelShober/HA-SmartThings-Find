@@ -16,11 +16,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
     devices = hass.data[DOMAIN][entry.entry_id]["devices"]
     entities = []
     for device in devices:
-        if device["data"].get("is_tracker"):
-            entities += [
-                RingButton(hass, entry.entry_id, device),
-                StopRingButton(hass, entry.entry_id, device),
-            ]
+        # Every device type can be rung via the web API, not just trackers
+        entities += [
+            RingButton(hass, entry.entry_id, device),
+            StopRingButton(hass, entry.entry_id, device),
+        ]
     async_add_entities(entities)
 
 

@@ -28,11 +28,12 @@
   "options": {
     "step": {
       "init": {
-        "description": "Optionen f\u00fcr Polling und Active Mode konfigurieren.",
+        "description": "Optionen f\u00fcr Polling und Active Mode konfigurieren.\n\nHandys, Tablets und Kopfh\u00f6rer klingeln nur mit einer Web-Session. Diese l\u00e4sst sich nicht automatisch erzeugen: melde dich auf smartthingsfind.samsung.com im Browser an, \u00f6ffne F12 \u2192 Application \u2192 Cookies, und f\u00fcge den Wert von JSESSIONID unten ein. Gibt es zwei, nimm den MIT Punkt-Suffix (z.B. .fmm-prd-cns-1). SmartTags klingeln auch ohne.",
         "data": {
           "update_interval": "Aktualisierungsintervall (in Sekunden)",
           "active_mode_smarttags": "Aktiven Modus f\u00fcr SmartTags verwenden. K\u00f6nnte Batterienutzung erh\u00f6hen",
-          "active_mode_others": "Aktiven Modus f\u00fcr andere Ger\u00e4te (Handys, Uhren, ...) verwenden. Deutlich erh\u00f6hter Akkuverbrauch!"
+          "active_mode_others": "Aktiven Modus f\u00fcr andere Ger\u00e4te (Handys, Uhren, ...) verwenden. Deutlich erh\u00f6hter Akkuverbrauch!",
+          "web_jsessionid": "JSESSIONID-Cookie (f\u00fcr Handy/Tablet/Kopfh\u00f6rer klingeln)"
         }
       }
     }

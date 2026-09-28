@@ -24,12 +24,15 @@ from cryptography.hazmat.primitives import padding
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives.asymmetric import padding as asym_padding
 
+from yarl import URL
+
 from .const import (
     DOMAIN, BATTERY_LEVELS, CONF_ACTIVE_MODE_SMARTTAGS, CONF_ACTIVE_MODE_OTHERS,
     CLIENT_ID_AUTH, CLIENT_ID_FIND, CLIENT_ID_ONECONNECT, SCOPE_AUTH, SCOPE_FIND,
     CONF_ACCESS_TOKEN, CONF_REFRESH_TOKEN, CONF_AUTH_SERVER_URL, CONF_USER_ID,
     CONF_IOT_ACCESS_TOKEN, CONF_IOT_REFRESH_TOKEN, CONF_DEVICE_ID,
-    CONF_INSTALLED_APP_ID, CONF_ST_USER_UUID
+    CONF_INSTALLED_APP_ID, CONF_ST_USER_UUID,
+    CONF_USER_AUTH_TOKEN, CONF_LOGIN_ID, CONF_WEB_JSESSIONID, URL_STF
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -65,10 +68,15 @@ def format_ring_error(err: str | None) -> str:
         return "Ring failed"
     if err == "unsupported_device":
         return "Ring not supported for this device."
-    if err.startswith("app_error_"):
-        return f"Ring failed: {err}"
-    if err.startswith("http_"):
-        return f"Ring failed: {err}"
+    # Phones and earbuds need the web session, which cannot be minted headlessly.
+    # Both cases are fixed the same way: paste a fresh cookie into the options.
+    if err in ("no_web_cookie", "web_session_expired"):
+        what = ("No web session stored" if err == "no_web_cookie"
+                else "The web session expired")
+        return (f"Ring failed: {what}. Open smartthingsfind.samsung.com in a "
+                "browser, log in, copy the JSESSIONID cookie and paste it into "
+                "the integration options (Settings -> Devices -> SmartThings "
+                "Find -> Configure). Tags keep working without it.")
     return f"Ring failed: {err}"
 
 def _sync_entity_names(hass: HomeAssistant, device_id: str, name: str) -> None:
@@ -644,6 +652,12 @@ async def do_login_stage_two(
     if not user_auth_token or not user_id:
         return None, None, None, None, "Authenticate response missing user token or user id"
 
+    # The master token can mint sessions for any client. Stash it so the config
+    # flow can persist it - without it we cannot build a web session for ringing
+    # phones and earbuds later on.
+    auth_data["user_auth_token"] = user_auth_token
+    auth_data["login_id"] = login_id
+
     async def _authorize_and_token(
         client_id: str,
         scope: str
@@ -974,10 +988,11 @@ async def get_devices(hass: HomeAssistant, session: aiohttp.ClientSession, entry
         location_type = device.get("locationType") or device.get("deviceType") or ""
         location_type_norm = str(location_type).upper()
         is_tracker = location_type_norm == "TRACKER"
-        if not is_tracker:
-            continue
+        # Non-trackers (phone, tablet, earbuds) have no location/battery via this
+        # API, but they can still be rung through the web API, so keep them.
         name = (
             device.get("stDevName")
+            or device.get("fmmDevName")
             or device.get("deviceName")
             or device.get("name")
             or device.get("label")
@@ -1218,6 +1233,236 @@ async def get_device_location(hass: HomeAssistant, session: aiohttp.ClientSessio
     }
 
 
+def _web_apply_cookie(
+    hass: HomeAssistant,
+    session: aiohttp.ClientSession,
+    entry_id: str
+) -> bool:
+    """
+    Injects the user-supplied JSESSIONID into the session's cookie jar.
+
+    We cannot mint this cookie ourselves - see the note in const.py. The user
+    pastes it once from a logged-in browser; keeping it alive is our job.
+    Note the value carries a Tomcat jvmRoute suffix (e.g. ".fmm-prd-cns-1")
+    that pins it to a cluster node, so it must be passed through verbatim.
+    """
+    cookie = hass.data[DOMAIN][entry_id].get(CONF_WEB_JSESSIONID)
+    if not cookie:
+        return False
+    session.cookie_jar.update_cookies(
+        {"JSESSIONID": cookie.strip()}, response_url=URL(URL_STF)
+    )
+    return True
+
+
+async def _web_ensure_session(
+    hass: HomeAssistant,
+    session: aiohttp.ClientSession,
+    entry_id: str
+) -> bool:
+    """
+    Makes sure we hold a valid web session + CSRF token.
+
+    Doubles as the keep-alive: chkLogin.do resets the 30 min idle timeout, and
+    the coordinator calls this on every poll (default every 120 s).
+    """
+    if await _web_refresh_csrf(hass, session, entry_id):
+        return True
+    # Jar is empty after a restart, or the cookie was just replaced in options.
+    if not _web_apply_cookie(hass, session, entry_id):
+        return False
+    return await _web_refresh_csrf(hass, session, entry_id)
+
+
+async def _web_refresh_csrf(
+    hass: HomeAssistant,
+    session: aiohttp.ClientSession,
+    entry_id: str
+) -> bool:
+    """Fetches the CSRF token, which the web API returns as a response *header*."""
+    try:
+        async with session.get(f"{URL_STF}/chkLogin.do") as res:
+            if res.status != 200:
+                return False
+            csrf = res.headers.get("_csrf")
+    except Exception as e:
+        _LOGGER.debug("chkLogin.do failed: %s", e)
+        return False
+    if not csrf:
+        # An expired or never-established session answers 200 with body "fail"
+        # and no _csrf header, so this is the only place it shows up.
+        _LOGGER.debug("chkLogin.do returned no _csrf - web session not valid")
+        return False
+    hass.data[DOMAIN][entry_id]["web_csrf"] = csrf
+    return True
+
+
+async def _web_device_ids(
+    hass: HomeAssistant,
+    session: aiohttp.ClientSession,
+    entry_id: str
+) -> dict[str, str]:
+    """
+    Maps device name -> web device id. The web API uses its own numeric ids which
+    are unrelated to the SmartThings UUIDs, and 'modelName' holds the user-given
+    name while 'nickName' holds the hardware model (yes, that way round).
+    """
+    csrf = hass.data[DOMAIN][entry_id].get("web_csrf")
+    if not csrf:
+        return {}
+    try:
+        # GET returns 404 here - this endpoint is POST-only
+        async with session.post(
+            f"{URL_STF}/device/getDeviceList.do",
+            params={"_csrf": csrf},
+            json={}
+        ) as res:
+            if res.status != 200:
+                return {}
+            data = await res.json(content_type=None)
+    except Exception as e:
+        _LOGGER.debug("getDeviceList.do failed: %s", e)
+        return {}
+
+    mapping: dict[str, str] = {}
+    for device in (data or {}).get("deviceList", []):
+        name = _html_unescape(device.get("modelName"))
+        dvce_id = device.get("dvceID")
+        if name and dvce_id:
+            mapping[name] = dvce_id
+    return mapping
+
+
+async def _web_dvce_id(
+    hass: HomeAssistant,
+    session: aiohttp.ClientSession,
+    entry_id: str,
+    dev_data: dict
+) -> tuple[str | None, str | None]:
+    """Resolves the web API device id, caching the name -> id map."""
+    data_store = hass.data[DOMAIN][entry_id]
+    mapping = data_store.get("web_dev_ids")
+    if not mapping:
+        mapping = await _web_device_ids(hass, session, entry_id)
+        data_store["web_dev_ids"] = mapping
+    name = dev_data.get("original_name") or dev_data.get("name")
+    dvce_id = mapping.get(name)
+    return (dvce_id, None) if dvce_id else (None, f"no_web_device_for_{name}")
+
+
+# Codes from getOperationResult.do, measured live 2026-09-24 and matched against the
+# web frontend. oprnStsCd: 1000 = queued (~2 s until the device answers),
+# 2800 = device answered, 2900/1900 = failed. The ringing flag itself sits in
+# extra.status (phone) or extra.left/right.status (buds): "4"/"5" = ringing,
+# phone idles at "0", buds at "2". Phones stop on their own after 60 s.
+RING_ERRORS = {"1452": "fmm_off", "507": "on_call", "3009": "wearing"}
+
+
+def parse_ring_op(op: dict | None) -> str:
+    """Maps a RING operation to ringing / idle / pending / error_* / unknown."""
+    if not op:
+        return "unknown"  # tags report nothing here
+    sts = op.get("oprnStsCd")
+    if sts in ("1000", "2100"):
+        return "pending"
+    if sts in ("2900", "1900"):
+        code = op.get("oprnResultCode")
+        return f"error_{RING_ERRORS.get(code, code)}"
+    if sts != "2800":
+        return "unknown"
+    extra = op.get("extra") or {}
+    states = [extra.get("status")] + [(extra.get(s) or {}).get("status") for s in ("left", "right")]
+    states = [s for s in states if s is not None]
+    if not states:
+        return "unknown"
+    return "ringing" if any(s in ("4", "5") for s in states) else "idle"
+
+
+async def get_ring_status(
+    hass: HomeAssistant,
+    session: aiohttp.ClientSession,
+    entry_id: str,
+    dev_data: dict
+) -> tuple[str, dict | None]:
+    """Reads the live ring state. Needs a valid web session (web_csrf)."""
+    data_store = hass.data[DOMAIN][entry_id]
+    if not data_store.get("web_csrf"):
+        return "unknown", None
+    dvce_id, _ = await _web_dvce_id(hass, session, entry_id, dev_data)
+    if not dvce_id:
+        return "unknown", None
+    try:
+        async with session.post(
+            f"{URL_STF}/dm/getOperationResult.do",
+            params={"_csrf": data_store["web_csrf"]},
+            json={"dvceId": dvce_id, "operation": ["RING"], "userId": data_store.get(CONF_USER_ID)}
+        ) as res:
+            if res.status != 200:
+                return "unknown", None
+            result = await res.json(content_type=None)
+    except Exception as e:
+        _LOGGER.debug("getOperationResult.do failed: %s", e)
+        return "unknown", None
+    op = next(iter((result or {}).get("operation") or []), None)
+    return parse_ring_op(op), op
+
+
+async def _web_ring(
+    hass: HomeAssistant,
+    session: aiohttp.ClientSession,
+    entry_id: str,
+    dev_data: dict,
+    start: bool
+) -> tuple[bool, str | None]:
+    """Rings any device type (tag, phone, tablet, watch, earbuds) via the web API."""
+    data_store = hass.data[DOMAIN][entry_id]
+
+    for attempt in range(2):
+        # chkLogin.do both validates the session and refreshes the CSRF token.
+        # An expired session answers HTTP 200 with body "fail" and no _csrf
+        # header, so the status code alone tells us nothing.
+        if not await _web_ensure_session(hass, session, entry_id):
+            data_store.pop("web_dev_ids", None)
+            return False, (
+                "web_session_expired"
+                if data_store.get(CONF_WEB_JSESSIONID) else "no_web_cookie"
+            )
+
+        dvce_id, err = await _web_dvce_id(hass, session, entry_id, dev_data)
+        if not dvce_id:
+            return False, err
+
+        payload = {
+            "dvceId": dvce_id,
+            "operation": "RING",
+            "usrId": data_store.get(CONF_USER_ID),
+            "status": "start" if start else "stop",
+        }
+        try:
+            async with session.post(
+                f"{URL_STF}/dm/addOperation.do",
+                params={"_csrf": data_store["web_csrf"]},
+                json=payload
+            ) as res:
+                if res.status != 200:
+                    return False, f"http_{res.status}"
+                result = await res.json(content_type=None)
+        except Exception as e:
+            return False, f"web_ring_error: {e}"
+
+        if (result or {}).get("resultCode") == "00":
+            return True, None
+
+        if attempt == 0:
+            # Could still be a stale session -> drop it and try once more
+            data_store.pop("web_csrf", None)
+            data_store.pop("web_dev_ids", None)
+            continue
+        return False, f"web_result_{(result or {}).get('resultCode')}"
+
+    return False, "web_session_failed"
+
+
 async def _ring_command(
     hass: HomeAssistant,
     session: aiohttp.ClientSession,
@@ -1252,16 +1497,35 @@ async def _ring_command(
     return True, None
 
 
+async def _ring(
+    hass: HomeAssistant,
+    session: aiohttp.ClientSession,
+    entry_id: str,
+    dev_data: dict,
+    start: bool
+) -> tuple[bool, str | None]:
+    """
+    Tags ring through the installed-app tracker API (what the SmartThings app uses),
+    everything else through the web API. A tag rung via the web API cannot be
+    stopped again - web and tracker stop are both accepted but it keeps beeping
+    (seen live 2026-09-27) - so tags only fall back to the web API.
+    """
+    if dev_data.get("is_tracker"):
+        device_id = dev_data.get("st_device_id") or dev_data.get("device_id")
+        ok, err = await _ring_command(hass, session, entry_id, device_id, "start" if start else "stop")
+        if ok:
+            return True, None
+        _LOGGER.debug("Tracker ring failed (%s), falling back to web API", err)
+    return await _web_ring(hass, session, entry_id, dev_data, start)
+
+
 async def ring_device(
     hass: HomeAssistant,
     session: aiohttp.ClientSession,
     entry_id: str,
     dev_data: dict
 ) -> tuple[bool, str | None]:
-    if dev_data.get("is_tracker"):
-        device_id = dev_data.get("st_device_id") or dev_data.get("device_id")
-        return await _ring_command(hass, session, entry_id, device_id, "start")
-    return False, "unsupported_device"
+    return await _ring(hass, session, entry_id, dev_data, True)
 
 
 async def stop_ring_device(
@@ -1270,10 +1534,7 @@ async def stop_ring_device(
     entry_id: str,
     dev_data: dict
 ) -> tuple[bool, str | None]:
-    if dev_data.get("is_tracker"):
-        device_id = dev_data.get("st_device_id") or dev_data.get("device_id")
-        return await _ring_command(hass, session, entry_id, device_id, "stop")
-    return False, "unsupported_device"
+    return await _ring(hass, session, entry_id, dev_data, False)
 
 
 def calc_gps_accuracy(hu: float, vu: float) -> float:
