@@ -87,9 +87,9 @@ def _install_homeassistant_stub() -> None:
     modules["homeassistant.config_entries"] = config_entries
 
     modules["homeassistant.components"] = types.ModuleType("homeassistant.components")
-    modules["homeassistant.components.device_tracker"] = types.ModuleType(
-        "homeassistant.components.device_tracker"
-    )
+    device_tracker = types.ModuleType("homeassistant.components.device_tracker")
+    device_tracker.TrackerEntity = TrackerEntity
+    modules["homeassistant.components.device_tracker"] = device_tracker
 
     device_tracker_config_entry = types.ModuleType(
         "homeassistant.components.device_tracker.config_entry"
