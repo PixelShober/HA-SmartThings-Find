@@ -11,7 +11,7 @@ latitude, longitude, gps_accuracy) actually changes.
 from unittest import mock
 
 import pytest
-from homeassistant.components.device_tracker.config_entry import TrackerEntity
+from homeassistant.components.device_tracker import TrackerEntity
 
 from custom_components.smartthings_find.device_tracker import SmartThingsDeviceTracker
 
@@ -145,3 +145,14 @@ def test_missing_device_data_is_not_rewritten_repeatedly(write_spy):
     coordinator.push({})
 
     assert write_spy.call_count == 1
+
+
+def test_battery_level_stays_an_attribute_without_the_deprecated_override():
+    """HA deprecates overriding battery_level on trackers (unsupported from
+    2027.7); the level must still reach the state through extra_state_attributes."""
+    assert "battery_level" not in SmartThingsDeviceTracker.__dict__
+    coordinator = FakeCoordinator()
+    tracker = make_tracker(coordinator)
+    coordinator.data = {"dev1": make_fix(battery_level=42)}
+
+    assert tracker.extra_state_attributes["battery_level"] == 42

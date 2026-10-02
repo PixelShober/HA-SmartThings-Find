@@ -1066,7 +1066,15 @@ async def get_devices(hass: HomeAssistant, session: aiohttp.ClientSession, entry
         )
         identifier = (DOMAIN, device_id)
         registry = device_registry.async_get(hass)
-        ha_dev = registry.async_get_device({identifier})
+        # async_get_device is deprecated (stops working in HA 2027.8): device
+        # identifiers are only unique per config entry now, so look the device up
+        # within this entry. The new helper exists since HA 2026.8; older cores
+        # keep the previous call.
+        get_entry_device = getattr(registry, "async_get_device_by_identifier", None)
+        if get_entry_device is not None:
+            ha_dev = get_entry_device(identifier, entry_id)
+        else:
+            ha_dev = registry.async_get_device({identifier})
         if ha_dev and ha_dev.disabled:
              _LOGGER.debug(
                 f"Ignoring disabled device: '{name}' (disabled by {ha_dev.disabled_by})")

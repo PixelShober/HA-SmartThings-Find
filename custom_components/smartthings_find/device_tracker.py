@@ -1,5 +1,5 @@
 import logging
-from homeassistant.components.device_tracker.config_entry import TrackerEntity as DeviceTrackerEntity
+from homeassistant.components.device_tracker import TrackerEntity as DeviceTrackerEntity
 from homeassistant.components.device_tracker.const import SourceType
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
@@ -117,12 +117,9 @@ class SmartThingsDeviceTracker(DeviceTrackerEntity):
             return data.get('used_loc', {}).get('gps_accuracy', None)
         return None
 
-    @property
-    def battery_level(self):
-        """Return the battery level of the device."""
-        data = self.coordinator.data.get(self.device_id, {})
-        return data.get('battery_level')
-    
+    # No battery_level override: HA deprecates it on trackers (unsupported from
+    # 2027.7). The battery sensor entity carries the level, and tag_data below
+    # still exposes it as the tracker's battery_level attribute.
     @property
     def extra_state_attributes(self):
         tag_data = self.coordinator.data.get(self.device_id, {}) or {}
